@@ -5,5 +5,6 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "ib-async>=2.1.0",
     "tws>=0.0.1",
 ]

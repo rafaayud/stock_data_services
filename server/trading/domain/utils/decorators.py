@@ -1,6 +1,7 @@
 from functools import wraps
 import logging
 import time
+import asyncio
 
 class ColoredFormatter(logging.Formatter):
     COLORS = {
@@ -28,18 +29,33 @@ def logged(logger_name=None, level=logging.INFO):
         if not logger.handlers:
             logger.addHandler(handler)
         logger.setLevel(level)
-        
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            logger.log(level, f"CALL {func.__name__}")
-            start = time.perf_counter()
-            try:
-                result = func(*args, **kwargs)
-            except Exception:
-                logger.exception(f"EXCEPTION in {func.__name__}")
-                raise
-            duration = time.perf_counter() - start
-            logger.log(level, f"RETURN {func.__name__} → {result!r} in {duration:.4f}s")
-            return result
-        return wrapper
+
+        if asyncio.iscoroutinefunction(func):
+            @wraps(func)
+            async def wrapper(*args, **kwargs):
+                logger.log(level, f"CALL {func.__name__}")
+                start = time.perf_counter()
+                try:
+                    result = await func(*args, **kwargs)
+                except Exception:
+                    logger.exception(f"EXCEPTION in {func.__name__}")
+                    raise
+                duration = time.perf_counter() - start
+                logger.log(level, f"RETURN {func.__name__} → {result!r} in {duration:.4f}s")
+                return result
+            return wrapper
+        else:
+            @wraps(func)
+            def wrapper(*args, **kwargs):
+                logger.log(level, f"CALL {func.__name__}")
+                start = time.perf_counter()
+                try:
+                    result = func(*args, **kwargs)
+                except Exception:
+                    logger.exception(f"EXCEPTION in {func.__name__}")
+                    raise
+                duration = time.perf_counter() - start
+                logger.log(level, f"RETURN {func.__name__} → {result!r} in {duration:.4f}s")
+                return result
+            return wrapper
     return decorator

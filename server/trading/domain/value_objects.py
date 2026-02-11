@@ -7,7 +7,7 @@ such as symbols, money amounts or time ranges.
 
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from enum import Enum
 
@@ -88,6 +88,7 @@ class Money:
 class TimeRange:
     """
     Inclusive time range [start, end] used for historical queries.
+    Always stored as UTC-aware datetimes.
     """
 
     start: datetime
@@ -96,6 +97,10 @@ class TimeRange:
     def __post_init__(self) -> None:
         if self.end <= self.start:
             raise ValueError("TimeRange end must be after start")
+        if self.start.tzinfo is None:
+            object.__setattr__(self, "start", self.start.replace(tzinfo=timezone.utc))
+        if self.end.tzinfo is None:
+            object.__setattr__(self, "end", self.end.replace(tzinfo=timezone.utc))
 
 
 @dataclass(frozen=True)
@@ -123,3 +128,7 @@ class OHLCV:
     def __post_init__(self) -> None:
         if self.open is None or self.high is None or self.low is None or self.close is None:
             raise ValueError("OHLCV values cannot be None")
+
+
+    def __str__(self) -> str:
+        return f"OHLCV(open={self.open}, high={self.high}, low={self.low}, close={self.close}, volume={self.volume})"

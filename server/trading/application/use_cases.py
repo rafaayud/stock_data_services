@@ -1,42 +1,45 @@
 """
 Trading application use cases built on top of the domain layer.
 
-These use cases are where you will later plug in a concrete
-Interactive Brokers implementation of the `MarketDataProvider`.
+These use cases orchestrate the domain ports to perform operations
+like fetching historical market data from Interactive Brokers.
+
+Designed to replicate the data-fetching needs from:
+  - "Quantitative Trading" by Ernest P. Chan
+  - "Algorithmic Trading" by Ernest P. Chan
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Iterable
+from typing import List
 
-from trading.domain.entities import BarSize, Instrument, MarketDataBar
+from trading.domain.aggregates.contract import Contract
+from trading.domain.aggregates.candle_request import FetchHistoricalBarsRequest
 from trading.domain.ports import MarketDataProvider
-from trading.domain.value_objects import TimeRange
+from trading.domain.value_objects import BarSize, OHLCV, TimeRange
 
-
-@dataclass
-class FetchHistoricalBarsRequest:
-    instrument: Instrument
-    time_range: TimeRange
-    bar_size: BarSize
 
 
 class FetchHistoricalBarsUseCase:
     """
     Application-level use case for fetching historical bars from a broker.
+
+    Accepts a domain Contract and delegates to the MarketDataProvider port,
+    which will be fulfilled by the TWSAdapter at runtime.
     """
 
     def __init__(self, market_data_provider: MarketDataProvider) -> None:
-        self._market_data_provider = market_data_provider
+        self._provider = market_data_provider
 
-    def execute(self, request: FetchHistoricalBarsRequest) -> Iterable[MarketDataBar]:
-        return self._market_data_provider.get_historical_bars(
-            instrument=request.instrument,
-            start=request.time_range.start,
-            end=request.time_range.end,
+    async def execute(self, request: FetchHistoricalBarsRequest) -> List[OHLCV]:
+        """
+        Fetch historical OHLCV data for the given contract and time window.
+
+        Returns a chronologically ordered list of OHLCV bars.
+        """
+        return await self._provider.get_historical_bars(
+            contract=request.contract,
+            time_range=request.time_range,
             bar_size=request.bar_size,
         )
-
-
