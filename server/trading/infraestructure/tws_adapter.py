@@ -146,6 +146,7 @@ def _build_ib_contract(contract: Contract) -> IBContract:
 def _bars_to_ohlcv(ib_bars) -> List[OHLCV]:
     return [
         OHLCV(
+            date=bar.date,
             open=bar.open,
             high=bar.high,
             low=bar.low,
@@ -198,14 +199,59 @@ class TWSAdapter(MarketDataProvider):
     async def __aexit__(self, exc_type, exc_value, traceback) -> None:
         await self.disconnect()
 
-    @logged(logger_name="trading.infrastructure.tws", level=logging.INFO)
+    def _build_request(
+        self,
+        symbol: Symbol,
+        time_range: TimeRange,
+        bar_size: BarSize,
+        exchange: Exchange | None = None,
+        currency: Currency | None = None,
+        security_type: SecurityType | None = None,
+    ) -> FetchHistoricalBarsRequest:
+        """
+        Helper to construct a domain FetchHistoricalBarsRequest from the
+        high-level parameters passed into the adapter.
+        """
+        exchange = exchange or Exchange.SMART
+        currency = currency or Currency.USD
+        security_type = security_type or SecurityType.STOCK
+
+        contract = Contract(
+            symbol=symbol,
+            exchange=exchange,
+            currency=currency,
+            security_type=security_type,
+        )
+
+        return FetchHistoricalBarsRequest(
+            contract=contract,
+            time_range=time_range,
+            bar_size=bar_size,
+        )
+
+    @logged(logger_name="trading.infrastructure.tws", level=logging.WARNING)
     async def get_historical_bars(
         self,
-        fetch_historical_bars_request: FetchHistoricalBarsRequest) -> List[OHLCV]:
+        symbol: Symbol,
+        time_range: TimeRange,
+        bar_size: BarSize,
+        exchange: Exchange | None = Exchange.SMART,
+        currency: Currency | None = Currency.USD,
+        security_type: SecurityType | None = SecurityType.STOCK,
+    ) -> List[OHLCV]:
 
         if not self._connected:
             raise ValueError("Not connected to the broker")
-    
+
+        fetch_historical_bars_request = self._build_request(
+            symbol=symbol,
+            time_range=time_range,
+            bar_size=bar_size,
+            exchange=exchange,
+            currency=currency,
+            security_type=security_type,
+        )
+
         ib_contract = _build_ib_contract(fetch_historical_bars_request.contract)
         ib_bar_size = _map_bar_size(fetch_historical_bars_request.bar_size)
 
@@ -255,34 +301,47 @@ class TWSAdapter(MarketDataProvider):
                     break
 
                 current_end = earliest_bar_date
-        except Exception as e:
+        except Exception:
             return []
 
         return all_ohlcv
 
     @logged(logger_name="trading.infrastructure.tws", level=logging.INFO)
-    async def fetch_historicals_multiple(
-    self,
-    fetch_historical_bars_requests: List[FetchHistoricalBarsRequest], max_concurrent: int = 5) -> Dict[Symbol, List[OHLCV]]:
+    async def get_historical_bars_multiple(
+        self,
+        symbols: List[Symbol],
+        time_range: TimeRange,
+        bar_size: BarSize,
+        exchange: Exchange | None = None,
+        currency: Currency | None = None,
+        security_type: SecurityType | None = None,
+        max_concurrent: int = 10,
+    ) -> Dict[Symbol, List[OHLCV]]:
 
         if not self._connected:
             raise ValueError("Not connected to the broker")
 
         semaphore = asyncio.Semaphore(max_concurrent)
 
-        async def _fetch_one(fetch_historical_bars_request: FetchHistoricalBarsRequest) -> tuple[Symbol, List[OHLCV]]:
+        async def _fetch_one(symbol: Symbol) -> tuple[Symbol, List[OHLCV]]:
             async with semaphore:
                 try:
                     bars = await asyncio.wait_for(
-                        self.get_historical_bars(fetch_historical_bars_request),
-                        timeout=10.0,  # por ejemplo 10 segundos
+                        self.get_historical_bars(
+                            symbol=symbol,
+                            time_range=time_range,
+                            bar_size=bar_size,
+                            exchange=exchange,
+                            currency=currency,
+                            security_type=security_type,
+                        ),
+                        timeout=100.0,
                     )
                 except asyncio.TimeoutError:
-                    # Si IB no responde en X segundos, devolvemos vacío
-                    return (fetch_historical_bars_request.contract.symbol, [])
-                return (fetch_historical_bars_request.contract.symbol, bars)
+                    return (symbol, [])
+                return (symbol, bars)
 
-        tasks = [_fetch_one(fetch_historical_bars_request) for fetch_historical_bars_request in fetch_historical_bars_requests]
+        tasks = [_fetch_one(symbol) for symbol in symbols]
         completed = await asyncio.gather(*tasks, return_exceptions=True)
 
         results: Dict[Symbol, List[OHLCV]] = {}

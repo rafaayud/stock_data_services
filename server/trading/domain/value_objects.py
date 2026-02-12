@@ -120,6 +120,7 @@ class OHLCV:
     """
     Open, High, Low, Close, Volume.
     """
+    date: datetime
     open: float
     high: float
     low: float
@@ -127,9 +128,9 @@ class OHLCV:
     volume: Optional[float] = None
 
     def __post_init__(self) -> None:
-        if self.open is None or self.high is None or self.low is None or self.close is None:
+        if self.date is None or self.open is None or self.high is None or self.low is None or self.close is None:
             raise ValueError("OHLCV values cannot be None")
 
 
     def __str__(self) -> str:
-        return f"OHLCV(open={self.open}, high={self.high}, low={self.low}, close={self.close}, volume={self.volume})"
+        return f"OHLCV(date={self.date}, open={self.open}, high={self.high}, low={self.low}, close={self.close}, volume={self.volume})"

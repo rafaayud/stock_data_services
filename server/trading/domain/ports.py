@@ -7,14 +7,10 @@ interfaces.
 """
 
 from abc import ABC, abstractmethod
-from datetime import datetime
-from typing import List, Protocol
+from typing import List, Protocol, Dict
 
 from .entities import BrokerConnectionConfig
-from .aggregates.contract import Contract
-from .value_objects import BarSize, OHLCV, TimeRange
-
-import asyncio
+from .value_objects import BarSize, OHLCV, TimeRange, Symbol
 
 class MarketDataProvider(ABC):
     """
@@ -36,11 +32,32 @@ class MarketDataProvider(ABC):
     @abstractmethod
     async def get_historical_bars(
         self,
-        contract: Contract,
+        symbol: Symbol,
         time_range: TimeRange,
-        bar_size: BarSize) -> List[OHLCV]:
+        bar_size: BarSize,
+        **kwargs,
+    ) -> List[OHLCV]:
         """
-        Retrieve historical bar data for an instrument between the given timestamps.
+        Retrieve historical bar data for a single symbol.
+
+        Additional keyword arguments (kwargs) allow broker-specific
+        configuration, such as exchange, currency or security type.
+        """
+
+    @abstractmethod
+    async def get_historical_bars_multiple(
+        self,
+        symbols: List[Symbol],
+        time_range: TimeRange,
+        bar_size: BarSize,
+        **kwargs,
+    ) -> Dict[Symbol, List[OHLCV]]:
+        """
+        Retrieve historical bar data for multiple symbols.
+
+        Additional keyword arguments (kwargs) allow broker-specific
+        configuration, such as exchange, currency or security type,
+        which will be applied to all symbols in the batch.
         """
 
 

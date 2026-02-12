@@ -10,4 +10,5 @@ dependencies = [
     "kagglehub>=1.0.0",
     "pandas>=3.0.0",
     "tws>=0.0.1",
+    "yfinance>=1.1.0",
 ]
