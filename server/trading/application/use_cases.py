@@ -12,12 +12,12 @@ Designed to replicate the data-fetching needs from:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List
+from typing import List, Dict
 
 from trading.domain.aggregates.contract import Contract
 from trading.domain.aggregates.candle_request import FetchHistoricalBarsRequest
 from trading.domain.ports import MarketDataProvider
-from trading.domain.value_objects import BarSize, OHLCV, TimeRange
+from trading.domain.value_objects import BarSize, OHLCV, TimeRange, Symbol
 
 
 
@@ -38,8 +38,8 @@ class FetchHistoricalBarsUseCase:
 
         Returns a chronologically ordered list of OHLCV bars.
         """
-        return await self._provider.get_historical_bars(
-            contract=request.contract,
-            time_range=request.time_range,
-            bar_size=request.bar_size,
-        )
+        return await self._provider.get_historical_bars(request)
+
+    async def execute_multiple(self, requests: List[FetchHistoricalBarsRequest]) -> Dict[Symbol, List[OHLCV]]:
+        return await self._provider.fetch_historicals_multiple(requests)
+

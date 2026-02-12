@@ -14,12 +14,13 @@ Usage:
 from __future__ import annotations
 
 import math
-from datetime import datetime, timedelta
-from typing import List, Optional
-
+from datetime import datetime, timedelta, timezone, date
+from typing import List, Optional, Dict
+import asyncio
 from ib_async import IB, Stock, Option, Future, Index, Forex, Contract as IBContract
-
+import logging
 from trading.domain.aggregates.contract import Contract
+from trading.domain.aggregates.candle_request import FetchHistoricalBarsRequest
 from trading.domain.entities import BrokerConnectionConfig
 from trading.domain.ports import MarketDataProvider
 from trading.domain.value_objects import (
@@ -29,6 +30,7 @@ from trading.domain.value_objects import (
     OHLCV,
     SecurityType,
     TimeRange,
+    Symbol,
 )
 from trading.domain.utils.decorators import logged
 
@@ -104,8 +106,8 @@ def _build_ib_contract(contract: Contract) -> IBContract:
     execution venue, while keeping the primary exchange from the domain.
     """
     symbol = str(contract.symbol)
-    currency = contract.currency
-    exchange = _EXCHANGE_MAP.get(contract.exchange, "SMART")
+    currency = contract.currency.value
+    exchange = _EXCHANGE_MAP.get(contract.exchange.value, "SMART")
 
     match contract.security_type:
         case SecurityType.STOCK:
@@ -166,8 +168,9 @@ class TWSAdapter(MarketDataProvider):
 
     def __init__(self, ib: Optional[IB] = None) -> None:
         self._ib = ib or IB()
+        self._connected = False
 
-    @logged(logger_name="trading.infrastructure.tws")
+    @logged(logger_name="trading.infrastructure.tws", level=logging.INFO)
     async def connect(self, config: BrokerConnectionConfig) -> None:
         if self._ib.isConnected():
             # ib_async exposes a synchronous disconnect(); there is no
@@ -179,12 +182,14 @@ class TWSAdapter(MarketDataProvider):
             port=config.port,
             clientId=config.client_id,
         )
+        self._connected = True
 
-    @logged(logger_name="trading.infrastructure.tws")
+    @logged(logger_name="trading.infrastructure.tws", level=logging.INFO)
     async def disconnect(self) -> None:
         if self._ib.isConnected():
             # Synchronous disconnect; safe to call from async context.
             self._ib.disconnect()
+            self._connected = False
 
     async def __aenter__(self) -> TWSAdapter:
         await self.connect(BrokerConnectionConfig(host="127.0.0.1", port=7497))
@@ -193,54 +198,99 @@ class TWSAdapter(MarketDataProvider):
     async def __aexit__(self, exc_type, exc_value, traceback) -> None:
         await self.disconnect()
 
-    @logged(logger_name="trading.infrastructure.tws")
+    @logged(logger_name="trading.infrastructure.tws", level=logging.INFO)
     async def get_historical_bars(
         self,
-        contract: Contract,
-        time_range: TimeRange,
-        bar_size: BarSize,
-    ) -> List[OHLCV]:
+        fetch_historical_bars_request: FetchHistoricalBarsRequest) -> List[OHLCV]:
+
+        if not self._connected:
+            raise ValueError("Not connected to the broker")
     
-        ib_contract = _build_ib_contract(contract)
-        ib_bar_size = _map_bar_size(bar_size)
+        ib_contract = _build_ib_contract(fetch_historical_bars_request.contract)
+        ib_bar_size = _map_bar_size(fetch_historical_bars_request.bar_size)
 
         qualified = await self._ib.qualifyContractsAsync(ib_contract)
         if not qualified:
-            raise ValueError(f"IB could not qualify contract: {contract}")
+            raise ValueError(f"IB could not qualify contract: {fetch_historical_bars_request.contract}")
         ib_contract = qualified[0]
 
         all_ohlcv: List[OHLCV] = []
-        current_end: datetime = time_range.end
+        current_end: datetime = fetch_historical_bars_request.time_range.end
         max_iterations = 200
 
-        for _ in range(max_iterations):
-            duration_str = _compute_duration_str(
-                TimeRange(start=time_range.start, end=current_end)
-            )
+        try:
+            for _ in range(max_iterations):
+                duration_str = _compute_duration_str(
+                    TimeRange(start=fetch_historical_bars_request.time_range.start, end=current_end)
+                )
 
-            bars = await self._ib.reqHistoricalDataAsync(
-                contract=ib_contract,
-                endDateTime=current_end,
-                durationStr=duration_str,
-                barSizeSetting=ib_bar_size,
-                whatToShow="TRADES",
-                useRTH=True,
-                formatDate=2,
-            )
+                bars = await self._ib.reqHistoricalDataAsync(
+                    contract=ib_contract,
+                    endDateTime=current_end,
+                    durationStr=duration_str,
+                    barSizeSetting=ib_bar_size,
+                    whatToShow="TRADES",
+                    useRTH=True,
+                    formatDate=2,
+                )
 
-            if not bars:
-                break
+                if not bars:
+                    break
 
-            chunk = _bars_to_ohlcv(bars)
-            all_ohlcv = chunk + all_ohlcv
+                chunk = _bars_to_ohlcv(bars)
+                all_ohlcv = chunk + all_ohlcv
 
-            earliest_bar_date = bars[0].date
-            if isinstance(earliest_bar_date, str):
-                earliest_bar_date = datetime.fromisoformat(earliest_bar_date)
+                earliest_bar_date = bars[0].date
+                if isinstance(earliest_bar_date, str):
+                    earliest_bar_date = datetime.fromisoformat(earliest_bar_date)
+                elif isinstance(earliest_bar_date, date) and not isinstance(earliest_bar_date, datetime):
+                    earliest_bar_date = datetime(
+                        earliest_bar_date.year,
+                        earliest_bar_date.month,
+                        earliest_bar_date.day,
+                        tzinfo=timezone.utc,
+                    )
 
-            if earliest_bar_date <= time_range.start:
-                break
+                if earliest_bar_date <= fetch_historical_bars_request.time_range.start:
+                    break
 
-            current_end = earliest_bar_date
+                current_end = earliest_bar_date
+        except Exception as e:
+            return []
 
         return all_ohlcv
+
+    @logged(logger_name="trading.infrastructure.tws", level=logging.INFO)
+    async def fetch_historicals_multiple(
+    self,
+    fetch_historical_bars_requests: List[FetchHistoricalBarsRequest], max_concurrent: int = 5) -> Dict[Symbol, List[OHLCV]]:
+
+        if not self._connected:
+            raise ValueError("Not connected to the broker")
+
+        semaphore = asyncio.Semaphore(max_concurrent)
+
+        async def _fetch_one(fetch_historical_bars_request: FetchHistoricalBarsRequest) -> tuple[Symbol, List[OHLCV]]:
+            async with semaphore:
+                try:
+                    bars = await asyncio.wait_for(
+                        self.get_historical_bars(fetch_historical_bars_request),
+                        timeout=10.0,  # por ejemplo 10 segundos
+                    )
+                except asyncio.TimeoutError:
+                    # Si IB no responde en X segundos, devolvemos vacío
+                    return (fetch_historical_bars_request.contract.symbol, [])
+                return (fetch_historical_bars_request.contract.symbol, bars)
+
+        tasks = [_fetch_one(fetch_historical_bars_request) for fetch_historical_bars_request in fetch_historical_bars_requests]
+        completed = await asyncio.gather(*tasks, return_exceptions=True)
+
+        results: Dict[Symbol, List[OHLCV]] = {}
+        for result in completed:
+            if isinstance(result, Exception):
+                continue
+            symbol, bars = result
+            results[symbol] = bars
+
+        return results
+

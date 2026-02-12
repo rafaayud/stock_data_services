@@ -37,6 +37,7 @@ class Exchange(str, Enum):
     AMEX = "AMEX"
     CBOE = "CBOE"
     CFE = "CFE"
+    SMART = "SMART"
 
 class Currency(str, Enum):
     """
