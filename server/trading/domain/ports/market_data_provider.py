@@ -9,8 +9,8 @@ interfaces.
 from abc import ABC, abstractmethod
 from typing import List, Protocol, Dict
 
-from .entities import BrokerConnectionConfig
-from .value_objects import BarSize, OHLCV, TimeRange, Symbol
+from ..entities import BrokerConnectionConfig
+from ..value_objects import BarSize, OHLCV, TimeRange, Symbol, Exchange, Currency, SecurityType
 
 class MarketDataProvider(ABC):
     """
@@ -35,7 +35,9 @@ class MarketDataProvider(ABC):
         symbol: Symbol,
         time_range: TimeRange,
         bar_size: BarSize,
-        **kwargs,
+        exchange: Exchange,
+        currency: Currency,
+        security_type: SecurityType,
     ) -> List[OHLCV]:
         """
         Retrieve historical bar data for a single symbol.
@@ -50,7 +52,9 @@ class MarketDataProvider(ABC):
         symbols: List[Symbol],
         time_range: TimeRange,
         bar_size: BarSize,
-        **kwargs,
+        exchange: Exchange,
+        currency: Currency,
+        security_type: SecurityType,
     ) -> Dict[Symbol, List[OHLCV]]:
         """
         Retrieve historical bar data for multiple symbols.
@@ -93,5 +97,6 @@ class RealtimeMarketDataProvider(ABC):
         """
         Cancel an existing real-time subscription.
         """
+
 
 

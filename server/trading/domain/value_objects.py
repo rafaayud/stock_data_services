@@ -134,3 +134,25 @@ class OHLCV:
 
     def __str__(self) -> str:
         return f"OHLCV(date={self.date}, open={self.open}, high={self.high}, low={self.low}, close={self.close}, volume={self.volume})"
+
+
+@dataclass(frozen=True)
+class ExecutionMode(str, Enum):
+    """
+    Represents a execution mode.
+    """
+
+    ON_CLOSE = "CLOSE"
+    ON_TICK = "TICK"
+
+
+@dataclass(frozen=True)
+class Signal(str, Enum):
+    """
+    Represents a signal.
+    """
+
+    BUY = "BUY"
+    SELL = "SELL"
+    HOLD = "HOLD"
+

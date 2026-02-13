@@ -1,10 +1,10 @@
 from server.trading.domain.ports import MarketDataProvider
 
-from server.trading.domain.value_objects import OHLCV, BarSize, TimeRange, Symbol
+from server.trading.domain.value_objects import OHLCV, BarSize, TimeRange, Symbol, Exchange, Currency, SecurityType
 
 import yfinance as yf
 from typing import List, Dict
-from trading.domain.utils.decorators import logged
+from server.trading.domain.utils.decorators import logged
 import logging
 
 
@@ -72,7 +72,9 @@ class YahooFinanceAdapter(MarketDataProvider):
         symbol: Symbol,
         time_range: TimeRange,
         bar_size: BarSize,
-        **_: dict,
+        exchange: Exchange,
+        currency: Currency,
+        security_type: SecurityType,
     ) -> List[OHLCV]:
         """
         Fetch historical OHLCV data for a single contract from Yahoo Finance.
@@ -109,7 +111,9 @@ class YahooFinanceAdapter(MarketDataProvider):
         symbols: List[Symbol],
         time_range: TimeRange,
         bar_size: BarSize,
-        **_: dict,
+        exchange: Exchange,
+        currency: Currency,
+        security_type: SecurityType,
     ) -> Dict[Symbol, List[OHLCV]]:
         """
         Fetch historical data for multiple symbols in a single yfinance call.

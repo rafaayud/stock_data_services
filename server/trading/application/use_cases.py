@@ -13,8 +13,8 @@ from __future__ import annotations
 
 from typing import List, Dict
 
-from trading.domain.ports import MarketDataProvider
-from trading.domain.value_objects import BarSize, OHLCV, TimeRange, Symbol
+from server.trading.domain.ports import MarketDataProvider
+from server.trading.domain.value_objects import BarSize, OHLCV, TimeRange, Symbol
 
 
 class FetchHistoricalBarsUseCase:

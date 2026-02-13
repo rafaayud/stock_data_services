@@ -19,11 +19,11 @@ from typing import List, Optional, Dict
 import asyncio
 from ib_async import IB, Stock, Option, Future, Index, Forex, Contract as IBContract
 import logging
-from trading.domain.aggregates.contract import Contract
-from trading.domain.aggregates.candle_request import FetchHistoricalBarsRequest
-from trading.domain.entities import BrokerConnectionConfig
-from trading.domain.ports import MarketDataProvider
-from trading.domain.value_objects import (
+from server.trading.domain.aggregates.contract import Contract
+from server.trading.domain.aggregates.candle_request import FetchHistoricalBarsRequest
+from server.trading.domain.entities import BrokerConnectionConfig
+from server.trading.domain.ports import MarketDataProvider
+from server.trading.domain.value_objects import (
     BarSize,
     Currency,
     Exchange,
@@ -32,7 +32,7 @@ from trading.domain.value_objects import (
     TimeRange,
     Symbol,
 )
-from trading.domain.utils.decorators import logged
+from server.trading.domain.utils.decorators import logged
 
 
 # ---------------------------------------------------------------------------
